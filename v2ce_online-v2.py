@@ -7,6 +7,7 @@ import argparse
 import numpy as np
 import os.path as op
 import time
+from collections import deque
 from pathlib2 import Path
 from torchvision import transforms
 from functools import partial
@@ -43,6 +44,14 @@ def preprocess_pair(prev_frame, cur_frame, height=260):
     image_units = torch.tensor(images).unsqueeze(0)
     image_units = frame_normalize(image_units)
     image_units = image_units.unsqueeze(1)
+    return image_units
+
+def preprocess_sequence(frames, height=260):
+    frame_normalize = transforms.Compose([transforms.Normalize([0.153, 0.153], [0.165, 0.165])])
+    resized = [cv2.resize(f.astype(np.float32) / 255.0, (int(f.shape[1] / f.shape[0] * height), height)) for f in frames]
+    images = np.stack(resized, axis=0)
+    image_units = torch.tensor(np.stack([images[:-1], images[1:]], axis=1)).unsqueeze(0)
+    image_units = frame_normalize(image_units)
     return image_units
 
 @torch.no_grad()
@@ -266,6 +275,7 @@ if __name__ == '__main__':
     parser.add_argument('--ceil', type=int, default=10)
     parser.add_argument('--upper_bound_percentile', type=int, default=98)
     parser.add_argument('--interval', type=int, default=150)
+    parser.add_argument('--seq_len', type=int, default=16)
     parser.add_argument('--vis_keep_polarity', type=SBool, default=True, nargs='?', const=True)
     parser.add_argument('-l', '--log_level', type=str, default='info')
     args = parser.parse_args()
@@ -282,9 +292,9 @@ if __name__ == '__main__':
         print('Failed to open video source')
         sys.exit(1)
 
-    prev_gray = None
     last_ts = 0
     events_list = None
+    frame_buffer = deque(maxlen=args.seq_len + 1)
 
     while True:
         ret, frame = cap.read()
@@ -292,9 +302,11 @@ if __name__ == '__main__':
             break
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         now_ms = int(time.time() * 1000)
-        if prev_gray is not None and (now_ms - last_ts >= args.interval):
-            image_units = preprocess_pair(prev_gray, gray, height=args.height)
+        frame_buffer.append(gray)
+        if len(frame_buffer) >= 2 and (now_ms - last_ts >= args.interval):
+            image_units = preprocess_sequence(list(frame_buffer), height=args.height)
             pred_voxel = infer_center_image_unit(model, image_units, width=args.width)
+            pred_voxel = pred_voxel[:, -1:, ...]
             L, P, C, H, W = pred_voxel.shape
             stage2_input = pred_voxel.reshape(L, 2, 10, H, W).to(device)
             if stage2_input.max().item() == 0:
@@ -305,7 +317,6 @@ if __name__ == '__main__':
             cv2.imshow('EventFrame', ef_frame)
             cv2.imshow('RGBFrame', frame)
             last_ts = now_ms
-        prev_gray = gray
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 

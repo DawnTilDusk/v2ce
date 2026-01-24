@@ -89,3 +89,14 @@ pip install -r requirements.txt --index-url https://pypi.tuna.tsinghua.edu.cn/si
 - 帧率与间隔：提高 --fps 会使事件时间步更细；缩短 --interval 可提升更新频率但增大计算负载。
 - 日志调试：设置 -l debug 可查看预处理与推理形状、序列分段信息（参见 video_to_voxels 等函数的 debug 输出）。
 - 网络与镜像：若 pip 安装失败，可切换至清华镜像或关闭代理（已在主干说明中提供命令）。
+
+
+
+指令：
+```powershell
+cd C:\isaac-sim\
+.\python.bat C:\Users\JerryY1\Desktop\v2ce\integrate\server-v2.py
+
+cd C:\Users\JerryY1\Desktop\v2ce
+python integrate/client.py 
+```

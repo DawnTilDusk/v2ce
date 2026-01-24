@@ -3,7 +3,7 @@ import os
 import sys
 
 # 步骤1：初始化 SimulationApp
-simulation_app = SimulationApp({"headless": False})
+simulation_app = SimulationApp({"headless": True})
 
 # 导入核心 API
 import numpy as np

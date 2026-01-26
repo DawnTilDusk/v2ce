@@ -8,7 +8,7 @@ import numpy as np
 import os.path as op
 import time
 from collections import deque
-from pathlib2 import Path
+from pathlib import Path
 from torchvision import transforms
 from functools import partial
 
@@ -287,7 +287,12 @@ if __name__ == '__main__':
     device = next(model.parameters()).device
     ldati = partial(sample_voxel_statistical, fps=args.fps, bidirectional=False, additional_events_strategy='slope')
 
-    cap = cv2.VideoCapture(args.input_video_path if args.input_video_path else args.camera_index)
+    if args.input_video_path:
+        cap = cv2.VideoCapture(args.input_video_path)
+    else:
+        # 强制使用 V4L2 后端适配 Ubuntu
+        cap = cv2.VideoCapture(args.camera_index, cv2.CAP_V4L2)
+
     if not cap.isOpened():
         print('Failed to open video source')
         sys.exit(1)

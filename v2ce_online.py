@@ -7,7 +7,7 @@ import argparse
 import numpy as np
 import os.path as op
 import time
-from pathlib2 import Path
+from pathlib import Path
 from torchvision import transforms
 from functools import partial
 

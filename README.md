@@ -25,6 +25,8 @@ export DISPLAY=:0 && python v2ce_online.py --device cuda --camera_index 0 --inte
 - 视频：
 ```powershell
 export DISPLAY=:0 && python v2ce_online.py --device cuda --input_video_path test.mp4 --interval 1 --fps 30 --ceil 10 --upper_bound_percentile 98
+
+export DISPLAY=:0 && python v2ce_online-v3.py --device cuda --input_video_path test.mp4 --interval 3 --fps 30
 ```
 
 ### 可能的问题：

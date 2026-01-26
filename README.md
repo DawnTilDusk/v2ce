@@ -5,24 +5,7 @@ clone https://github.com/DawnTilDusk/v2ce.git
 pip install -r requirements.txt
 ```
 
-### 然后可以直接用cpu跑
-- 摄像头：
-```powershell
-python v2ce_online.py --device cpu --camera_index 0 --interval 150 --fps 30 --ceil 10 --upper_bound_percentile 98
-```
-
-- 视频：
-```powershell
-python v2ce_online.py --device cpu --input_video_path test.mp4 --interval 150 --fps 30 --ceil 10 --upper_bound_percentile 98
-```
-
-### 如果要用gpu
-**则先替换pytorch为gpu版**
-```powershell
-pip uninstall -y torch torchvision torchaudio
-pip install torch==2.0.0+cu118 torchvision==0.15.0+cu118 torchaudio==2.0.0+cu118 --index-url https://download.pytorch.org/whl/cu118
-```
-
+### 使用gpu
 **测试是否能正常使用gpu**
 ```powershell
 python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.version.cuda)"
@@ -36,12 +19,12 @@ True
 
 - 摄像头：
 ```powershell
-python v2ce_online.py --device cuda --camera_index 0 --interval 150 --fps 30 --ceil 10 --upper_bound_percentile 98
+export DISPLAY=:0 && python v2ce_online.py --device cuda --camera_index 0 --interval 1 --fps 30 --ceil 10 --upper_bound_percentile 98
 ```
 
 - 视频：
 ```powershell
-python v2ce_online.py --device cuda --input_video_path test.mp4 --interval 150 --fps 30 --ceil 10 --upper_bound_percentile 98
+export DISPLAY=:0 && python v2ce_online.py --device cuda --input_video_path test.mp4 --interval 1 --fps 30 --ceil 10 --upper_bound_percentile 98
 ```
 
 ### 可能的问题：
@@ -99,4 +82,10 @@ cd C:\isaac-sim\
 
 cd C:\Users\JerryY1\Desktop\v2ce
 python integrate/client.py 
+
+#ssh：
+ssh fishyu@162.105.195.38
+
+#启动vnc
+x11vnc -display :0 -forever -shared -rfbport 5900
 ```

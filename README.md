@@ -46,7 +46,7 @@ export DISPLAY=:0 && $ISAACSIM_PYTHON_EXE robot_test/go2_v2ce_sync.py
    - DynamicObstacleManager : 独立管理环境中的动态物体，与机器人解耦。
    - Visualization : 使用 Matplotlib 实时展示算法效果（因为 Isaac Sim 的 OpenCV GUI 受限）。
 
-```Mermaid
+```mermaid
 graph TD
     %% 初始化阶段
     subgraph Init [初始化阶段]

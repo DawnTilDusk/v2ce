@@ -10,17 +10,6 @@ import carb
 import cv2
 import sys
 import os
-import matplotlib.pyplot as plt
-
-# --------------------------------------------------------------------------------
-# [CRITICAL] 强制注入 Conda 环境的 site-packages 路径
-# 解决 Isaac Sim 找不到外部安装库 (如 einops) 的问题
-# --------------------------------------------------------------------------------
-CONDA_SITE_PACKAGES = "/home/fishyu/anaconda3/lib/python3.10/site-packages"
-if CONDA_SITE_PACKAGES not in sys.path:
-    print(f"[INFO] Injecting Conda site-packages: {CONDA_SITE_PACKAGES}")
-    sys.path.append(CONDA_SITE_PACKAGES)
-
 import omni.appwindow
 import omni.kit.viewport.utility as viewport_utils
 import omni.isaac.core.utils.nucleus as nucleus_utils
@@ -35,8 +24,6 @@ from omni.isaac.sensor import Camera
 # 导入 V2CE 推理模块
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from v2ce_inference import V2CEPredictor
-# [NEW] 导入动态障碍物管理器
-from env.obstacle_manager import DynamicObstacleManager
 
 def main():
     # 3. 创建仿真世界
@@ -71,11 +58,6 @@ def main():
     my_go2 = Articulation(prim_path=go2_prim_path, name="go2_dog")
     world.scene.add(my_go2)
 
-    # [NEW] 初始化动态障碍物环境
-    # num_objects=20, area_size=10.0 可根据需要调整
-    print("[INFO] 初始化动态障碍物环境...")
-    obs_manager = DynamicObstacleManager(world, num_objects=20, area_size=10.0)
-
     # 6. 初始化相机传感器
     # 注意：Go2 的相机通常位于 base 或 trunk 下的 front_cam
     camera_path = f"{go2_prim_path}/base/front_cam"
@@ -85,21 +67,10 @@ def main():
 
     # 7. 初始化 V2CE 推理器
     print("[INFO] 初始化 V2CE 推理器...")
-    
-    # [FIX] 使用动态绝对路径加载模型，避免 FileNotFoundError
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-    model_path = os.path.join(project_root, 'weights', 'v2ce_3d.pt')
-    
-    # [DEBUG] 打印路径以确认
-    print("="*50)
-    print(f"[DEBUG] Calculated Model Path: {model_path}")
-    print("="*50)
-    
     # 注意：这里的 height/width 应该与模型训练参数一致
     v2ce_predictor = V2CEPredictor(
-        model_path=model_path, 
-        device='cuda:5',
+        model_path='../weights/v2ce_3d.pt', 
+        device='cuda',
         fps=int(target_fps),
         height=260,
         width=346
@@ -113,27 +84,6 @@ def main():
     print("[INFO] 正在预热渲染器...")
     for _ in range(10):
         world.step(render=True)
-
-    # [FIX] 使用 matplotlib 进行可视化，替代不支持的 OpenCV GUI
-    print("[INFO] 初始化 Matplotlib 可视化...")
-    plt.ion() # 开启交互模式
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-    
-    # 初始化空的图像对象
-    # 注意：event_frame 是 (H, W, 3) BGR, my_camera 获取的是 (H, W, 3) BGR
-    # matplotlib 需要 RGB
-    empty_img_v2ce = np.zeros((260, 346, 3), dtype=np.uint8)
-    empty_img_rgb = np.zeros((480, 640, 3), dtype=np.uint8)
-    
-    im1 = ax1.imshow(empty_img_v2ce)
-    ax1.set_title("V2CE Event Frame")
-    ax1.axis('off')
-    
-    im2 = ax2.imshow(empty_img_rgb)
-    ax2.set_title("RGB Input")
-    ax2.axis('off')
-    
-    plt.show()
 
     # 获取关节控制相关 (同 teleop 逻辑)
     dof_names = my_go2.dof_names
@@ -163,22 +113,13 @@ def main():
     kds = np.full(n_dof, 30.0)
     my_go2.get_articulation_controller().set_gains(kps=kps, kds=kds)
 
-    # 键盘控制设置 (增强鲁棒性，适配 Headless)
+    # 键盘控制设置
     _input = carb.input.acquire_input_interface()
-    app_window = omni.appwindow.get_default_app_window()
-    
-    if app_window:
-        _keyboard = app_window.get_keyboard()
-    else:
-        _keyboard = None
-        print("[WARN] 无窗口模式运行，键盘控制已禁用")
-
+    _keyboard = omni.appwindow.get_default_app_window().get_keyboard()
     def is_key_pressed(key):
-        if _keyboard is None:
-            return False
         return _input.get_keyboard_value(_keyboard, key) > 0
 
-    move_speed = 10
+    move_speed = 0.5
     print("\n" + "="*50)
     print(f"同步模式已启动 (FPS={target_fps})")
     print("  每一步仿真时间严格等于 1/30 秒")
@@ -189,8 +130,6 @@ def main():
 
     # 9. 主循环
     step_count = 0
-    last_bgr_image = None # 记录上一帧用于计算差异
-    
     while simulation_app.is_running():
         # A. 获取图像
         rgba_image = my_camera.get_rgba()
@@ -209,47 +148,23 @@ def main():
             # 转换为 BGR 用于 OpenCV 和 V2CE
             bgr_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
             
-            # [DEBUG] 计算相邻帧差异
-            rgb_diff = 0.0
-            if last_bgr_image is not None:
-                rgb_diff = np.mean(np.abs(bgr_image.astype(np.float32) - last_bgr_image.astype(np.float32)))
-            last_bgr_image = bgr_image.copy()
-            
-            # [DEBUG] 打印输入图像数据范围，防止归一化错误
-            if step_count % 30 == 0:
-                print(f"[DEBUG] Input Image Stats | Min: {bgr_image.min()}, Max: {bgr_image.max()}, Mean: {bgr_image.mean():.2f}, Dtype: {bgr_image.dtype}")
-
             # B. 执行 V2CE 推理 (同步阻塞)
             # 无论这里推理耗时多少 (10ms 或 500ms)，仿真世界的时间都在这一刻暂停
             event_frame = v2ce_predictor.predict(bgr_image)
             
-            # [DEBUG] 打印状态
-            if step_count % 30 == 0:
-                has_event = event_frame is not None
-                stats_info = ""
-                if has_event:
-                    # 打印像素统计信息：最大值、平均值
-                    stats_info = f" | Max: {event_frame.max()}, Mean: {event_frame.mean():.2f}"
-                print(f"[DEBUG] Step {step_count}: Event Frame Generated: {has_event}{stats_info} | RGB Diff: {rgb_diff:.4f}")
-
-            # C. 显示结果 (使用 Matplotlib 刷新)
+            # C. 显示结果 (可选)
+            # 注意：在 Headless 模式下 cv2.imshow 会失败，需要 try-catch 或根据配置决定
             try:
                 if event_frame is not None:
-                    # OpenCV (BGR) -> Matplotlib (RGB)
-                    im1.set_data(cv2.cvtColor(event_frame, cv2.COLOR_BGR2RGB))
-                    # [DEBUG] 同时也保存到文件，双重保险
-                    #cv2.imwrite("debug_vis_event.jpg", event_frame)
+                    cv2.imshow("V2CE Event Frame", event_frame)
+                    # 这里可以在 event_frame 上做进一步的避障决策逻辑
+                    # ...
                 
-                im2.set_data(cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB))
-                #cv2.imwrite("debug_vis_rgb.jpg", bgr_image)
-                
-                # 刷新绘图
-                fig.canvas.draw_idle()
-                fig.canvas.flush_events()
-                
-            except Exception as e:
-                # 偶尔可能会因为 GUI 线程问题报错，忽略之
-                pass
+                cv2.imshow("RGB Input", bgr_image)
+                if cv2.waitKey(1) & 0xFF == 27:
+                    break
+            except Exception:
+                pass # Headless 模式忽略显示错误
 
         # D. 机器人控制逻辑 (简单的键盘控制示例)
         current_pos, current_rot = my_go2.get_world_pose()
@@ -276,9 +191,6 @@ def main():
         # 维持站立
         my_go2.apply_action(ArticulationAction(joint_positions=default_joints))
         
-        # [NEW] 更新动态障碍物位置
-        obs_manager.update(physics_dt)
-
         # E. 物理世界步进
         # 这一步会让仿真世界的时间向前推进 1/30 秒
         world.step(render=True)

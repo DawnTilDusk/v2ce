@@ -66,11 +66,25 @@ class V2CEPredictor:
         # Center crop
         image_units = image_units[..., image_units.shape[-1]//2 - self.width//2 : image_units.shape[-1]//2 + self.width//2]
         inputs = image_units.float().to(self.device)
+        
+        # [DEBUG] 打印输入统计
+        # print(f"[V2CE DEBUG] Input Tensor: Min={inputs.min():.4f}, Max={inputs.max():.4f}, Mean={inputs.mean():.4f}")
+        
         outputs = self.model(inputs)
+        
+        # [DEBUG] 打印输出统计
+        if outputs.max().item() == 0:
+             print(f"[V2CE DEBUG] Model Output is ALL ZEROS! Something is wrong.")
+        #else:
+        #     print(f"[V2CE DEBUG] Model Output Raw: Min={outputs.min():.6f}, Max={outputs.max():.6f}, Mean={outputs.mean():.6f}")
+
         return outputs
 
     def make_event_frame(self, voxel_grid, keep_polarity=True):
         """生成可视化事件帧"""
+        #[DEBUG] 打印输入形状
+        #print(f"[V2CE DEBUG] make_event_frame Input Shape: {voxel_grid.shape}")
+        
         if voxel_grid.ndim == 5:
             B, P, L, H, W = voxel_grid.shape
             if keep_polarity:
@@ -82,9 +96,18 @@ class V2CEPredictor:
                     efs_flatten = efs.flatten()
                     efs_flatten = efs_flatten[efs_flatten > 0]
                     if efs_flatten.size == 0:
+                        print("[V2CE DEBUG] efs_flatten is empty! Returning black frame.")
                         return np.zeros((H, W, 3), dtype=np.uint8)
                     efs_upper_bound = min(np.percentile(efs_flatten, self.upper_bound_percentile), self.ceil)
-                    efs = np.clip(efs, 0, efs_upper_bound) / (efs_upper_bound if efs_upper_bound > 0 else 1.0)
+                    
+                    # [DEBUG] 打印边界值
+                    # print(f"[V2CE DEBUG] Upper Bound: {efs_upper_bound}, Max Val: {efs_flatten.max()}")
+                    
+                    if efs_upper_bound <= 0:
+                         # 防止除以零
+                         efs_upper_bound = 1.0
+                         
+                    efs = np.clip(efs, 0, efs_upper_bound) / efs_upper_bound
                 else:
                     # 单极性处理逻辑简化...
                     return np.zeros((H, W, 3), dtype=np.uint8) 
@@ -92,6 +115,7 @@ class V2CEPredictor:
                 # 不保留极性逻辑简化...
                 return np.zeros((H, W, 3), dtype=np.uint8)
         else:
+             print(f"[V2CE DEBUG] Unexpected ndim: {voxel_grid.ndim}")
              raise ValueError('voxel_grid must be 5D')
              
         efs = np.moveaxis(efs, 1, -1)
@@ -130,7 +154,8 @@ class V2CEPredictor:
         # 转换为可视化帧 (Stage 2 LDATI 可选，这里主要为了可视化)
         # 如果需要稀疏事件列表，可以在这里调用 self.ldati(stage2_input)
         
-        stage2_input = pred_voxel.cpu().numpy()
-        ef_frame = self.make_event_frame(stage2_input, keep_polarity=True)
+        L, P, C, H, W = pred_voxel.shape
+        stage2_input = pred_voxel.reshape(L, 2, 10, H, W).to(self.device)
+        ef_frame = self.make_event_frame(stage2_input.cpu().numpy(), keep_polarity=True)
         
         return ef_frame

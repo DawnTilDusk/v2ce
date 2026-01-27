@@ -65,7 +65,7 @@ graph TD
         
         %% 1. 感知
         I -- Yes --> J[获取相机图像 Get RGB]
-        J --> K[图像预处理 (RGB -> BGR)]
+        J --> K["图像预处理 (RGB -> BGR)"]
         
         %% 2. 推理 (核心同步点)
         K --> L[V2CE 模型推理 Predict]

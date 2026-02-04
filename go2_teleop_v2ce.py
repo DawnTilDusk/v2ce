@@ -41,7 +41,7 @@ import go2.go2_ctrl as go2_ctrl
 
 # Import V2CE modules
 from v2ce_inference import V2CEPredictor
-from env.obstacle_manager import DynamicObstacleManager
+from env.obstacle_manager_fabric import DynamicObstacleManager
 
 def find_robot_prim_path(world):
     """

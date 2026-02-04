@@ -10,8 +10,6 @@ dist/
 
 .venv/
 venv/
-env/
-ENV/
 .env
 .env.*
 

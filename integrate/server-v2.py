@@ -3,7 +3,7 @@ import os
 import sys
 
 # 步骤1：初始化 SimulationApp
-simulation_app = SimulationApp({"headless": True})
+simulation_app = SimulationApp({"headless": False})
 
 # 导入核心 API
 import numpy as np
@@ -27,13 +27,46 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
     sys.path.append(script_dir)
 from obstacle_manager import DynamicObstacleManager
+from projectile_manager import ProjectileManager
+from blocking_manager import BlockingObstacleManager
+from trap_manager import TrapManager
 
 def main():
     # 步骤2：创建仿真世界
     world = World(stage_units_in_meters=1.0, physics_dt=0.01, rendering_dt=0.01)
-    world.scene.add_default_ground_plane()
     
-    # 添加光照
+    # 获取资源路径
+    assets_root_path = nucleus_utils.get_assets_root_path()
+    if assets_root_path is None:
+        print("[ERROR] 无法获取 Nucleus 资源路径，请确保 Nucleus 服务已运行。")
+        return
+
+    # --- 加载真实场景 (替代默认地面) ---
+    # 选项1: 简易仓库 (空间较大，适合移动)
+    scene_url = f"{assets_root_path}/Isaac/Environments/Simple_Warehouse/warehouse.usd"
+    
+    # 选项2: 露天/开放环境 (Grid)
+    #scene_url = f"{assets_root_path}/Isaac/Environments/Grid/default_environment.usd"
+    
+    # 选项3: 办公室
+    # scene_url = f"{assets_root_path}/Isaac/Environments/Office/office.usd"
+    
+    print(f"[INFO] 正在加载场景: {scene_url}")
+    # 将场景加载到 /World/Environment
+    add_reference_to_stage(usd_path=scene_url, prim_path="/World/Environment")
+    
+    # --- 调整场景大小 ---
+    # 用户希望场景更大、天花板更高。我们通过 XFormPrim 对其进行整体缩放。
+    env_prim = XFormPrim(prim_path="/World/Environment")
+    # 缩放系数：1.0 表示保持原始比例 (仓库本身已经很大了)
+    # 如果觉得还不够大，可以设为 1.5 或 2.0
+    env_scale = 1.0 
+    print(f"[INFO] 正在将场景放大 {env_scale} 倍...")
+    env_prim.set_local_scale(np.array([env_scale, env_scale, env_scale]))
+    
+    # world.scene.add_default_ground_plane() # 注释掉默认地面，因为加载的场景通常已有地面
+    
+    # 添加光照 (如果场景自带光照可能需要调整，这里保留作为补光)
     prim_utils.create_prim(
         prim_path="/World/defaultLight",
         prim_type="DistantLight",
@@ -43,9 +76,18 @@ def main():
     # 步骤3：初始化动态障碍物管理器 (已封装)
     # 生成 25 个障碍物，分布在 12x12 区域，避开中心 2.0m 范围
     obs_manager = DynamicObstacleManager(world, num_objects=25, area_size=12.0, excluded_center_radius=2.0)
+    
+    # 初始化抛射物管理器
+    proj_manager = ProjectileManager(world, max_projectiles=10)
+    
+    # 初始化拦路障碍物管理器
+    blocking_manager = BlockingObstacleManager(world, max_obstacles=5)
+    
+    # 初始化陷阱管理器
+    trap_manager = TrapManager(world, max_traps=2)
 
     # 步骤4：加载 Unitree Go2 机器人
-    assets_root_path = nucleus_utils.get_assets_root_path()
+    # assets_root_path 已在前面获取
     go2_url = f"{assets_root_path}/Isaac/Robots/Unitree/Go2/go2.usd"
     go2_prim_path = "/World/Unitree_Go2"
     
@@ -108,15 +150,100 @@ def main():
 
     _input = carb.input.acquire_input_interface()
     _keyboard = omni.appwindow.get_default_app_window().get_keyboard()
-    move_speed = 0.8 # 稍微加快移动速度以适应动态环境
+    move_speed = 8 # 稍微加快移动速度以适应动态环境
     dt = 0.01
+    
+    # 抛射物计时器
+    projectile_timer = 0
+    projectile_interval = 2.0 # 每 2 秒生成一个球
+    
+    # 拦路障碍物计时器
+    blocking_timer = 0
+    # 初始随机间隔
+    blocking_interval = np.random.uniform(2.0, 4.0)
+    
+    # 围墙陷阱计时器
+    trap_timer = 0
+    trap_interval = np.random.uniform(5.0, 8.0) # 加快频率：每 5-8 秒生成一个
 
     # 步骤7：仿真循环
     while simulation_app.is_running():
         # A. 更新动态障碍物
         obs_manager.update(dt)
+        
+        # A2. 更新抛射物 (每隔一定时间在机器人前方生成)
+        projectile_timer += dt
+        if projectile_timer >= projectile_interval:
+            projectile_timer = 0
+            # 获取机器人当前位置
+            current_pos, current_rot = my_go2.get_world_pose()
+            # 在前方 3-5 米，高度 2-3 米生成，砸向机器人
+            dist = np.random.uniform(3.0, 5.0)
+            height = np.random.uniform(2.0, 3.0)
+            proj_manager.spawn_projectile(current_pos, current_rot, forward_dist=dist, height=height)
+            print(f"[INFO] 已生成抛射物! 距离: {dist:.2f}m")
+            
+        # A3. 更新拦路障碍物
+        blocking_timer += dt
+        if blocking_timer >= blocking_interval:
+            blocking_timer = 0
+            current_pos, current_rot = my_go2.get_world_pose()
+            
+            # FIX: 因为使用 set_world_pose 移动，物理引擎读到的速度为 0
+            # 我们通过检测按键状态来手动构造"指令速度"
+            cmd_vel = np.zeros(3)
+            # 调试打印：检查按键输入
+            # print(f"UP: {_input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.UP)}")
+            
+            if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.UP) > 0:
+                cmd_vel[0] += move_speed
+            if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.DOWN) > 0:
+                cmd_vel[0] -= move_speed
+            if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.LEFT) > 0:
+                cmd_vel[1] += move_speed
+            if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.RIGHT) > 0:
+                cmd_vel[1] -= move_speed
+            
+            # 只有当有移动指令时才生成
+            if np.linalg.norm(cmd_vel[:2]) > 0.1:
+                # 打印日志确认触发
+                # print(f"[DEBUG] 触发路障生成! 速度指令: {cmd_vel}")
+                blocking_manager.spawn_blocker(current_pos, cmd_vel)
+                # 重置下一次的间隔为 2-4 秒之间的随机数
+                blocking_interval = np.random.uniform(2.0, 4.0)
+                # print(f"[INFO] 下一次路障将在 {blocking_interval:.2f} 秒后生成")
+                
+        # A4. 更新围墙陷阱 (每隔 10-15 秒)
+        trap_timer += dt
+        if trap_timer >= trap_interval:
+            trap_timer = 0
+            current_pos, current_rot = my_go2.get_world_pose()
+            # 无论是否移动，强制生成围墙，把狗困住
+            trap_manager.spawn_trap(current_pos, current_rot)
+            # 重置下一次间隔
+            trap_interval = np.random.uniform(5.0, 8.0)
+            
+        # A5. 更新陷阱状态 (检查是否需要移除)
+        # 获取当前位置，确保变量已定义
+        current_pos_check, _ = my_go2.get_world_pose()
+        trap_manager.update(current_pos_check)
 
         # B. 处理视频客户端连接
+        # D. 键盘控制机器人 (保持原有逻辑，确保移动本身是生效的)
+        current_pos, current_rot = my_go2.get_world_pose()
+        moved = False
+        if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.UP) > 0:
+            current_pos[0] += move_speed * dt
+            moved = True
+        if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.DOWN) > 0:
+            current_pos[0] -= move_speed * dt
+            moved = True
+        if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.LEFT) > 0:
+            current_pos[1] += move_speed * dt
+            moved = True
+        if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.RIGHT) > 0:
+            current_pos[1] -= move_speed * dt
+            moved = True
         if conn is None:
             try:
                 conn, addr = server_socket.accept()
@@ -146,22 +273,12 @@ def main():
                     conn.close()
                     conn = None
 
-        # D. 键盘控制机器人
-        current_pos, current_rot = my_go2.get_world_pose()
-        moved = False
-        if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.UP) > 0:
-            current_pos[0] += move_speed * dt
-            moved = True
-        if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.DOWN) > 0:
-            current_pos[0] -= move_speed * dt
-            moved = True
-        if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.LEFT) > 0:
-            current_pos[1] += move_speed * dt
-            moved = True
-        if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.RIGHT) > 0:
-            current_pos[1] -= move_speed * dt
-            moved = True
-            
+        # D. 键盘控制机器人 (此段代码已移至上方检测逻辑中，避免重复检测)
+        # current_pos, current_rot = my_go2.get_world_pose()
+        # moved = False
+        # ... (原代码被注释掉或删除)
+        
+        # 实际执行移动
         if moved:
             my_go2.set_world_pose(position=current_pos, orientation=current_rot)
             my_go2.set_linear_velocity(np.zeros(3))
@@ -172,6 +289,9 @@ def main():
         world.step(render=True)
 
     # 步骤8：清理退出
+    proj_manager.cleanup() # 清理残留的球体
+    blocking_manager.cleanup() # 清理路障
+    trap_manager.cleanup() # 清理陷阱
     if conn: conn.close()
     server_socket.close()
     simulation_app.close()

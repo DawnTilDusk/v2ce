@@ -16,7 +16,14 @@ fi
 echo "[INFO] Sourcing setup_conda_env.sh from Isaac Sim..."
 source "$ISAAC_SIM_PATH/setup_conda_env.sh"
 
-# 3. 运行你的代码
-# "$@" 允许你向脚本传递参数
-echo "[INFO] Running simple_go2_teleop.py..."
-python simple_go2_teleop.py "$@"
+# 3. 运行 Python 脚本
+# 逻辑：如果第一个参数是以 .py 结尾的文件，则运行该文件；否则运行默认的 go2_teleop_v2ce.py
+if [[ "$1" == *.py ]]; then
+    SCRIPT="$1"
+    shift # 移除第一个参数，将剩余参数传递给脚本
+else
+    SCRIPT="go2_teleop_v2ce.py"
+fi
+
+echo "[INFO] Running $SCRIPT..."
+python "$SCRIPT" "$@"

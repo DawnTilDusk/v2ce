@@ -175,6 +175,9 @@ python -c "import isaacsim; import omni.isaac.lab; print('Success!')"
 export DISPLAY=:0
 bash
 export ISAAC_SIM_PATH="/media/fishyu/6955024a-ed66-4a86-b94a-687c51c28306/fishyu/luoac/isaacsim" && source $ISAAC_SIM_PATH/setup_conda_env.sh && python simple_go2_teleop.py
+
+export DISPLAY=:0 && ./run_teleop.sh simple_go2_teleop.py
+export DISPLAY=:0 && ./run_teleop.sh --headless
 ```
 ```py
 # env中硬编码

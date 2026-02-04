@@ -196,6 +196,8 @@ def main():
         
         step_count += 1
         
+    if not args_cli.headless:
+        pass
     env.close()
     simulation_app.close()
 

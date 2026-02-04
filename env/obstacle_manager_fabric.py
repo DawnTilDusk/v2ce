@@ -44,12 +44,14 @@ class DynamicObstacleManager:
             
             if random.random() < 0.5:
                 # Cube
-                prim = create_prim(prim_path, "Cube", position=np.array([x, y, h/2]))
+                # [FIX] Force z=0.05 to avoid floating (origin issue)
+                prim = create_prim(prim_path, "Cube", position=np.array([x, y, 0.05]))
                 prim.GetAttribute("size").Set(1.0)
                 scale_vec = Gf.Vec3f(w, w, h)
             else:
                 # Cylinder
-                prim = create_prim(prim_path, "Cylinder", position=np.array([x, y, h/2]))
+                # [FIX] Force z=0.05 to avoid floating
+                prim = create_prim(prim_path, "Cylinder", position=np.array([x, y, 0.05]))
                 prim.GetAttribute("radius").Set(0.5) # Diameter 1
                 prim.GetAttribute("height").Set(1.0)
                 scale_vec = Gf.Vec3f(w, w, h)

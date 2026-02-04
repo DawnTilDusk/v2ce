@@ -142,3 +142,62 @@ python integrate/client.py
 - GPU 视频（更高帧率的事件生成）：
   python v2ce_online.py --device cuda --input_video_path test.mp4 --fps 60 --interval 100 --ceil 12 --upper_bound_percentile 97 --vis_keep_polarity true
 - 日志等级：在调试时使用 -l debug 以查看细节；部署时建议 info 或 warning。
+
+
+### Local Motion
+```sh
+cd ~
+git clone https://github.com/isaac-sim/IsaacLab.git
+cd IsaacLab
+# 切换到与项目兼容的版本（README提到是2.1.0）
+git checkout v2.1.0
+
+conda activate v2ce
+
+# 安装核心库 (Core)
+pip install -e source/isaaclab
+pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1
+pip install numba==0.63.1 llvmlite==0.46.0
+
+# 安装资产库 (Assets)
+pip install -e source/isaaclab_assets
+
+# 安装任务库 (Tasks - 包含示例环境)
+pip install -e source/isaaclab_tasks
+
+# 安装 RL 接口 (如果你要做强化学习)
+pip install -e source/isaaclab_rl
+/home/fishyu/anaconda3/envs/v2ce/bin/pip install rsl-rl-lib==2.3.1
+
+pip check
+python -c "import isaacsim; import omni.isaac.lab; print('Success!')"
+
+export DISPLAY=:0
+bash
+export ISAAC_SIM_PATH="/media/fishyu/6955024a-ed66-4a86-b94a-687c51c28306/fishyu/luoac/isaacsim" && source $ISAAC_SIM_PATH/setup_conda_env.sh && python simple_go2_teleop.py
+```
+```py
+# env中硬编码
+# [FIX] 动态修复 USD 路径
+# 如果 Nucleus 路径解析失败 (None/...), 强制替换为有效的 HTTP URL
+usd_path = UNITREE_GO2_CFG.spawn.usd_path
+if usd_path.startswith("None") or not usd_path.startswith("http"):
+    print(f"[WARN] Invalid USD path detected: {usd_path}")
+    # 使用 NVIDIA 官方 S3 镜像
+    fixed_path = "http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/4.5/Isaac/Robots/Unitree/Go2/go2.usd"
+    print(f"[INFO] Patching USD path to: {fixed_path}")
+    UNITREE_GO2_CFG.spawn.usd_path = fixed_path
+
+# 主入口硬编码
+# ---------------------------------------------------------------------------
+# [FIX] 手动设置 Nucleus 服务器路径
+# 解决 NUCLEUS_ASSET_ROOT_DIR 为 None 导致的 USD 加载失败问题
+# ---------------------------------------------------------------------------
+settings = carb.settings.get_settings()
+if settings.get("/persistent/isaac/asset_root/cloud") is None:
+    # 使用 NVIDIA 官方提供的 S3 镜像地址作为后备
+    fallback_url = "http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/4.5"
+    print(f"[INFO] Setting Nucleus asset root to fallback URL: {fallback_url}")
+    settings.set("/persistent/isaac/asset_root/cloud", fallback_url)
+    
+```

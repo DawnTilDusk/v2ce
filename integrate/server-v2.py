@@ -46,7 +46,7 @@ def main():
     scene_url = f"{assets_root_path}/Isaac/Environments/Simple_Warehouse/warehouse.usd"
     
     # 选项2: 露天/开放环境 (Grid)
-    #scene_url = f"{assets_root_path}/Isaac/Environments/Grid/default_environment.usd"
+    # scene_url = f"{assets_root_path}/Isaac/Environments/Grid/default_environment.usd"
     
     # 选项3: 办公室
     # scene_url = f"{assets_root_path}/Isaac/Environments/Office/office.usd"
@@ -177,9 +177,10 @@ def main():
             projectile_timer = 0
             # 获取机器人当前位置
             current_pos, current_rot = my_go2.get_world_pose()
-            # 在前方 3-5 米，高度 2-3 米生成，砸向机器人
-            dist = np.random.uniform(3.0, 5.0)
-            height = np.random.uniform(2.0, 3.0)
+            # 在前方 0.5-3.0 米 (更近)，高度 1.5-2.5 米生成，砸向机器人
+            # 有时甚至可以直接在头顶 (距离接近0)
+            dist = np.random.uniform(0.0, 3.0) 
+            height = np.random.uniform(1.5, 2.5)
             proj_manager.spawn_projectile(current_pos, current_rot, forward_dist=dist, height=height)
             print(f"[INFO] 已生成抛射物! 距离: {dist:.2f}m")
             
@@ -244,6 +245,14 @@ def main():
         if _input.get_keyboard_value(_keyboard, carb.input.KeyboardInput.RIGHT) > 0:
             current_pos[1] -= move_speed * dt
             moved = True
+        
+        # 边界限制 (防止机器狗跑出场地)
+        # 与 DynamicObstacleManager 的 area_size (12.0) 保持一致
+        # 范围是 [-6.0, 6.0]
+        limit = 6.0 
+        current_pos[0] = np.clip(current_pos[0], -limit, limit)
+        current_pos[1] = np.clip(current_pos[1], -limit, limit)
+
         if conn is None:
             try:
                 conn, addr = server_socket.accept()

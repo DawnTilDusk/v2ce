@@ -36,6 +36,7 @@ class ProjectileManager:
                     prim_type="Sphere",
                     position=initial_pos,
                     scale=np.array([0.2, 0.2, 0.2]), # 半径 0.2m
+                    attributes={"primvars:displayColor": [(1.0, 0.0, 0.0)]} # 设为鲜艳的红色
                 )
             
             rigid_prim = RigidPrim(prim_path=prim_path, name=f"ball_{i}")
@@ -93,19 +94,25 @@ class ProjectileManager:
         # 简单估算 t = distance / horizontal_speed
         # 设水平速度大概 5m/s
         horizontal_dist = np.linalg.norm(target_pos[:2] - spawn_pos[:2])
-        flight_time = horizontal_dist / 5.0
-        flight_time = np.clip(flight_time, 0.5, 1.5) # 限制飞行时间
         
-        # 计算所需初速度
-        # V0 = (P_target - P_start - 0.5 * g * t^2) / t
-        delta_p = target_pos - spawn_pos
-        velocity = (delta_p - 0.5 * g * (flight_time**2)) / flight_time
-        
-        # 为了增加冲击力，稍微加大向下的分量 (模拟用力扔)
-        # 这里的计算已经是物理精确的"抛物线"能击中目标。
-        # 如果想让球"砸"得更狠，可以减少飞行时间 t，这样初速度会变大，轨迹更平直有力。
-        # 这里我们给 velocity 额外加一点向下的速度，让它不是完美的抛物线，而是"扣杀"
-        velocity[2] -= 2.0 
+        if horizontal_dist < 0.5:
+            # 距离很近（头顶生成），直接垂直砸下
+            # 给一点点随机水平速度，模拟没扔准
+            vx = np.random.uniform(-0.5, 0.5)
+            vy = np.random.uniform(-0.5, 0.5)
+            velocity = np.array([vx, vy, -4.0]) # 向下 4m/s
+        else:
+            # 距离较远，使用抛物线公式
+            flight_time = horizontal_dist / 5.0
+            flight_time = np.clip(flight_time, 0.4, 1.2) # 限制飞行时间
+            
+            # 计算所需初速度
+            # V0 = (P_target - P_start - 0.5 * g * t^2) / t
+            delta_p = target_pos - spawn_pos
+            velocity = (delta_p - 0.5 * g * (flight_time**2)) / flight_time
+            
+            # 额外加一点向下分量，确保不是“高抛”，而是“砸”
+            velocity[2] -= 1.0 
         
         rigid_prim.set_linear_velocity(velocity)
         
@@ -115,10 +122,5 @@ class ProjectileManager:
         """清理所有生成的球体"""
         # 注意：这里我们不再删除，只是建议在仿真结束时调用
         # 如果需要彻底清除，可以删除父节点
-        if is_prim_path_valid(self.prim_base_path):
-            delete_prim(self.prim_base_path)
-
-    def cleanup(self):
-        """清理所有生成的球体"""
         if is_prim_path_valid(self.prim_base_path):
             delete_prim(self.prim_base_path)

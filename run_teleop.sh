@@ -26,4 +26,5 @@ else
 fi
 
 echo "[INFO] Running $SCRIPT..."
+export DISPLAY=:0
 python "$SCRIPT" "$@"

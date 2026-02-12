@@ -3,7 +3,7 @@ import random
 import torch
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.utils.prims import get_prim_at_path, create_prim
-from pxr import UsdPhysics, UsdGeom, Gf
+from pxr import UsdPhysics, UsdGeom, Gf, Usd, Sdf
 
 class DynamicObstacleManager:
     """管理动态障碍物的类"""
@@ -19,7 +19,21 @@ class DynamicObstacleManager:
         self.MIN_W, self.MAX_W = 0.4, 0.8
         self.SPEED_RANGE = (0.5, 2.0) # 米/秒
         
+        self._setup_collision_group()
         self._setup_obstacles()
+
+    def _setup_collision_group(self):
+        """设置碰撞组，使障碍物之间互不碰撞"""
+        group_path = "/World/CollisionGroups/ObstaclesGroup"
+        # 确保父级 Scope 存在
+        if not self.world.stage.GetPrimAtPath("/World/CollisionGroups"):
+             self.world.stage.DefinePrim("/World/CollisionGroups", "Scope")
+        
+        # 定义碰撞组
+        self.collision_group = UsdPhysics.CollisionGroup.Define(self.world.stage, group_path)
+        
+        # 将该组添加到自身的过滤列表中 (filteredGroups)，实现组内互不碰撞
+        self.collision_group.GetFilteredGroupsRel().AddTarget(group_path)
 
     def _setup_obstacles(self):
         print(f"正在生成 {self.num_objects} 个动态障碍物 (Kinematic)...")
@@ -64,7 +78,16 @@ class DynamicObstacleManager:
             UsdGeom.Gprim(prim).CreateDisplayColorAttr().Set([Gf.Vec3f(*color)])
 
             # Apply Collision (Crucial)
-            UsdPhysics.CollisionAPI.Apply(prim)
+            collision_api = UsdPhysics.CollisionAPI.Apply(prim)
+            collision_api.CreateCollisionEnabledAttr(True)
+            
+            # Apply Mesh Collision API to ensure physics engine generates a collider
+            mesh_collision_api = UsdPhysics.MeshCollisionAPI.Apply(prim)
+            if prim.GetTypeName() == "Cube":
+                 mesh_collision_api.CreateApproximationAttr("boundingCube")
+            else:
+                 # For Cylinder, convexHull is a safe bet, or boundingCylinder if supported
+                 mesh_collision_api.CreateApproximationAttr("convexHull")
             
             # 关键步骤：设置为运动学刚体 (Kinematic)
             # 1. 获取 Prim (Already have it)
@@ -74,6 +97,10 @@ class DynamicObstacleManager:
             if not rb_api:
                 rb_api = UsdPhysics.RigidBodyAPI.Apply(prim)
             rb_api.CreateKinematicEnabledAttr(True)
+            
+            # 添加到碰撞组 (colliders collection)
+            collection_api = Usd.CollectionAPI.Apply(self.collision_group.GetPrim(), "colliders")
+            collection_api.CreateIncludesRel().AddTarget(prim_path)
             
             # 3. 包装为 XFormPrim (Safe replacement for RigidPrim)
             print(f"[ENV INFO] 正在包装 {prim_path} 为 XFormPrim")

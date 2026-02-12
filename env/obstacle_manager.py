@@ -61,22 +61,22 @@ class DynamicObstacleManager:
             
             # 关键步骤：设置为运动学刚体 (Kinematic)
             # 1. 获取 Prim
-            print(f"[ENV INFO] 正在获取 {prim_path} 的 Prim")
+            #print(f"[ENV INFO] 正在获取 {prim_path} 的 Prim")
             prim = get_prim_at_path(prim_path)
             # 2. 应用或获取 RigidBodyAPI 并设置 kinematicEnabled
-            print(f"[ENV INFO] 正在应用 RigidBodyAPI 到 {prim_path}")
+            #print(f"[ENV INFO] 正在应用 RigidBodyAPI 到 {prim_path}")
             rb_api = UsdPhysics.RigidBodyAPI.Get(self.world.stage, prim_path)
             if not rb_api:
                 rb_api = UsdPhysics.RigidBodyAPI.Apply(prim)
             rb_api.CreateKinematicEnabledAttr(True)
             
             # 3. 包装为 RigidPrim 方便后续操作
-            print(f"[ENV INFO] 正在包装 {prim_path} 为 RigidPrim")
+            #print(f"[ENV INFO] 正在包装 {prim_path} 为 RigidPrim")
             rigid_obj = RigidPrim(prim_path=prim_path, name=f"{name}_rigid")
             self.obstacles.append(rigid_obj)
             
             # 随机初始速度方向
-            print(f"[ENV INFO] 正在设置 {name} 的初始速度 (方向: {angle:.2f}, 速度: {speed:.2f})")
+            #print(f"[ENV INFO] 正在设置 {name} 的初始速度 (方向: {angle:.2f}, 速度: {speed:.2f})")
             angle = random.uniform(0, 2 * np.pi)
             speed = random.uniform(*self.SPEED_RANGE)
             vx = np.cos(angle) * speed
